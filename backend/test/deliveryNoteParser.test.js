@@ -1,0 +1,14 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import {parseEuropeanDecimal,parseSpanishDate,parseDeliveryNotePages} from '../src/services/deliveryNoteParser.js'
+const item=(text,x,y)=>({text,x,y}),header=(code='4300200004',name='BANPOR SL',y=500)=>[item(code,18,y),item(name,69,y)]
+const delivery=({note='232785/RBC',date='14/09/23',product='386070',concept='NUTRICOMPOST',quantity='25,76',price='35,0000',base='901,60',vat='90,16',total='991,76',y=480}={})=>[item(note,18,y),item(date,78,y),item(product,204,y),item(concept,264,y),item(quantity,559,y),item(price,618,y),item(base,681,y),item(vat,735,y),item(total,795,y)]
+const parse=pages=>parseDeliveryNotePages(pages.map((items,index)=>({pageNumber:index+1,items})))
+test('converteix números europeus i quantitats amb unitat',()=>{assert.equal(parseEuropeanDecimal('1.017,94'),'1017.94');assert.equal(parseEuropeanDecimal('25,76'),'25.76');assert.equal(parseEuropeanDecimal('4,00 HA'),'4.00');assert.equal(parseEuropeanDecimal('11,14 TN'),'11.14');assert.equal(parseEuropeanDecimal(''),null)})
+test('valida i converteix dates',()=>{assert.equal(parseSpanishDate('14/09/23'),'2023-09-14');assert.equal(parseSpanishDate('31/02/24'),null)})
+test('detecta client, camps buits i concepte en dues línies',()=>{const result=parse([[...header(),...delivery(),item('(020103)',264,470)]]);assert.equal(result.clients[0].clientCode,'4300200004');assert.equal(result.rows[0].externalCode,null);assert.match(result.rows[0].concept,/\(020103\)/);assert.equal(result.rows[0].wasteCode,'020103')})
+test('manté el client actiu entre pàgines',()=>{const result=parse([[...header(),...delivery({y:480})],[...delivery({note:'232786/RBC',y:480})]]);assert.equal(result.rows.length,2);assert.equal(result.rows[1].clientCode,'4300200004')})
+test('exclou subtotals, totals acumulats i peus',()=>{const result=parse([[...header(),...delivery(),item('Totales BANPOR SL:',265,450),item('Total acumulado',437,44),item('- Página 1 / 1.093 -',387,15)]]);assert.equal(result.rows.length,1)})
+test('conserva diverses línies del mateix albarà',()=>{const result=parse([[...header(),...delivery(),...delivery({product:'386071',concept:'SEGONA LÍNIA',y:460})]]);assert.equal(result.rows.length,2);assert.equal(result.rows[0].deliveryNoteNumber,result.rows[1].deliveryNoteNumber);assert.notEqual(result.rows[0].lineHash,result.rows[1].lineHash)})
+test('marca duplicats i diferències monetàries',()=>{const same=delivery();const result=parse([[...header(),...same,...delivery({y:460}),...delivery({note:'ERR/RBC',base:'900,00',y:440})]]);assert.match(result.rows[1].warnings.join(' '),/duplicat/i);assert.match(result.rows[2].warnings.join(' '),/no coincideix/i)})
+test('valida correctament imports i quantitats negatives',()=>{const result=parse([[...header(),...delivery({quantity:'-14,90',price:'15,0000',base:'-223,50',vat:'-22,35',total:'-245,85'})]]);assert.deepEqual(result.rows[0].warnings,[])})

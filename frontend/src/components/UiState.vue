@@ -1,0 +1,2 @@
+<script setup>defineProps({loading:Boolean,empty:Boolean,error:String,emptyText:{type:String,default:'No hi ha dades per mostrar.'}})</script>
+<template><div v-if="loading" class="state" role="status"><span class="spinner"></span> Carregant…</div><div v-else-if="error" class="alert error" role="alert">{{error}}</div><div v-else-if="empty" class="state empty"><div class="empty-icon">◇</div><strong>Sense resultats</strong><p>{{emptyText}}</p></div><slot v-else/></template>
