@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise'
 import bcrypt from 'bcryptjs'
 import { env } from '../config/env.js'
-import { buildLineHash } from '../services/deliveryNoteParser.js'
+import { buildLineHash,buildLineIdentityHash } from '../services/deliveryNoteParser.js'
 
 const connection = await mysql.createConnection({host:env.DB_HOST,port:env.DB_PORT,user:env.DB_USER,password:env.DB_PASSWORD,multipleStatements:true,charset:'utf8mb4'})
 try {
@@ -29,13 +29,13 @@ try {
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id BIGINT UNSIGNED NULL, action VARCHAR(80) NOT NULL, entity VARCHAR(80) NOT NULL, record_id VARCHAR(80), old_values JSON, new_values JSON, ip_address VARCHAR(45), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL, INDEX(entity,record_id), INDEX(created_at)
     );
     CREATE TABLE IF NOT EXISTS sales_imports (
-      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, company_id BIGINT UNSIGNED NOT NULL, imported_by BIGINT UNSIGNED NOT NULL, original_filename VARCHAR(255) NOT NULL, file_hash CHAR(64) NOT NULL, detected_company VARCHAR(190), page_count INT NOT NULL DEFAULT 0, client_count INT NOT NULL DEFAULT 0, row_count INT NOT NULL DEFAULT 0, confirmed_row_count INT NOT NULL DEFAULT 0, discarded_row_count INT NOT NULL DEFAULT 0, taxable_base_total DECIMAL(16,2) NOT NULL DEFAULT 0, vat_total DECIMAL(16,2) NOT NULL DEFAULT 0, total_amount DECIMAL(16,2) NOT NULL DEFAULT 0, status ENUM('processing','pending_review','completed','failed','cancelled') NOT NULL, warnings JSON, errors JSON, confirmed_at DATETIME NULL, cancelled_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY(company_id) REFERENCES companies(id), FOREIGN KEY(imported_by) REFERENCES users(id), UNIQUE(company_id,file_hash), INDEX(status,created_at)
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, company_id BIGINT UNSIGNED NOT NULL, imported_by BIGINT UNSIGNED NOT NULL, original_filename VARCHAR(255) NOT NULL, file_hash CHAR(64) NOT NULL, detected_company VARCHAR(190), page_count INT NOT NULL DEFAULT 0, client_count INT NOT NULL DEFAULT 0, row_count INT NOT NULL DEFAULT 0, confirmed_row_count INT NOT NULL DEFAULT 0, discarded_row_count INT NOT NULL DEFAULT 0, updated_row_count INT NOT NULL DEFAULT 0, taxable_base_total DECIMAL(16,2) NOT NULL DEFAULT 0, vat_total DECIMAL(16,2) NOT NULL DEFAULT 0, total_amount DECIMAL(16,2) NOT NULL DEFAULT 0, status ENUM('processing','pending_review','completed','failed','cancelled') NOT NULL, warnings JSON, errors JSON, confirmed_at DATETIME NULL, cancelled_at DATETIME NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY(company_id) REFERENCES companies(id), FOREIGN KEY(imported_by) REFERENCES users(id), UNIQUE(company_id,file_hash), INDEX(status,created_at)
     );
     CREATE TABLE IF NOT EXISTS sales_import_clients (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, import_id BIGINT UNSIGNED NOT NULL, client_code VARCHAR(40) NOT NULL, client_name VARCHAR(190) NOT NULL, detected_subtotal JSON, UNIQUE(import_id,client_code), FOREIGN KEY(import_id) REFERENCES sales_imports(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS sales_import_rows (
-      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, import_id BIGINT UNSIGNED NOT NULL, import_client_id BIGINT UNSIGNED NULL, client_code VARCHAR(40), client_name VARCHAR(190), delivery_note_number VARCHAR(80) NOT NULL, delivery_date DATE NULL, external_code VARCHAR(80), product_code VARCHAR(80), concept TEXT, waste_code VARCHAR(20), vehicle_plate VARCHAR(30), vehicle_plate_normalized VARCHAR(30), trailer_plate VARCHAR(30), trailer_plate_normalized VARCHAR(30), quantity DECIMAL(18,4), unit_price DECIMAL(18,4), taxable_base DECIMAL(16,2), vat_amount DECIMAL(16,2), total_amount DECIMAL(16,2), source_page INT NOT NULL, raw_text TEXT, confidence ENUM('high','review','manual') NOT NULL DEFAULT 'high', warnings JSON, line_hash CHAR(64) NOT NULL, is_confirmed BOOLEAN NOT NULL DEFAULT FALSE, discarded_reason VARCHAR(40) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY(import_id) REFERENCES sales_imports(id) ON DELETE CASCADE, FOREIGN KEY(import_client_id) REFERENCES sales_import_clients(id) ON DELETE SET NULL, UNIQUE(import_id,line_hash), INDEX(client_code,delivery_date), INDEX(product_code), INDEX(delivery_note_number), INDEX(line_hash,is_confirmed)
+      id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, import_id BIGINT UNSIGNED NOT NULL, import_client_id BIGINT UNSIGNED NULL, client_code VARCHAR(40), client_name VARCHAR(190), delivery_note_number VARCHAR(80) NOT NULL, delivery_date DATE NULL, external_code VARCHAR(80), product_code VARCHAR(80), concept TEXT, waste_code VARCHAR(20), vehicle_plate VARCHAR(30), vehicle_plate_normalized VARCHAR(30), trailer_plate VARCHAR(30), trailer_plate_normalized VARCHAR(30), quantity DECIMAL(18,4), unit_price DECIMAL(18,4), taxable_base DECIMAL(16,2), vat_amount DECIMAL(16,2), total_amount DECIMAL(16,2), source_page INT NOT NULL, raw_text TEXT, confidence ENUM('high','review','manual') NOT NULL DEFAULT 'high', warnings JSON, line_hash CHAR(64) NOT NULL, identity_hash CHAR(64) NULL, is_confirmed BOOLEAN NOT NULL DEFAULT FALSE, discarded_reason VARCHAR(40) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY(import_id) REFERENCES sales_imports(id) ON DELETE CASCADE, FOREIGN KEY(import_client_id) REFERENCES sales_import_clients(id) ON DELETE SET NULL, UNIQUE(import_id,line_hash), INDEX(client_code,delivery_date), INDEX(product_code), INDEX(delivery_note_number), INDEX(line_hash,is_confirmed), INDEX(identity_hash,is_confirmed)
     );
     CREATE TABLE IF NOT EXISTS sales_import_issues (
       id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, import_id BIGINT UNSIGNED NOT NULL, row_id BIGINT UNSIGNED NULL, severity ENUM('warning','error') NOT NULL DEFAULT 'warning', issue_code VARCHAR(80) NOT NULL, message VARCHAR(500) NOT NULL, resolved_at DATETIME NULL, resolved_by BIGINT UNSIGNED NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY(import_id) REFERENCES sales_imports(id) ON DELETE CASCADE, FOREIGN KEY(row_id) REFERENCES sales_import_rows(id) ON DELETE CASCADE, FOREIGN KEY(resolved_by) REFERENCES users(id) ON DELETE SET NULL, INDEX(import_id,severity)
@@ -58,6 +58,7 @@ try {
     CREATE TABLE IF NOT EXISTS app_settings (setting_key VARCHAR(120) PRIMARY KEY,setting_value VARCHAR(255) NOT NULL,updated_by BIGINT UNSIGNED NULL,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,FOREIGN KEY(updated_by) REFERENCES users(id) ON DELETE SET NULL);
   `)
   const [importColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_imports'",[env.DB_NAME]);const importColumnSet=new Set(importColumns.map(row=>row.COLUMN_NAME));if(!importColumnSet.has('confirmed_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN confirmed_row_count INT NOT NULL DEFAULT 0 AFTER row_count');if(!importColumnSet.has('discarded_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN discarded_row_count INT NOT NULL DEFAULT 0 AFTER confirmed_row_count')
+  if(!importColumnSet.has('updated_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN updated_row_count INT NOT NULL DEFAULT 0 AFTER discarded_row_count')
   const [rowColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_import_rows'",[env.DB_NAME]);if(!rowColumns.some(row=>row.COLUMN_NAME==='discarded_reason'))await connection.query('ALTER TABLE sales_import_rows ADD COLUMN discarded_reason VARCHAR(40) NULL AFTER is_confirmed')
   const [classificationColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_article_compost_group'",[env.DB_NAME])
   if(!classificationColumns.some(row=>row.COLUMN_NAME==='category')){
@@ -124,5 +125,24 @@ try {
       WHERE target.manually_reviewed=FALSE AND target.category IS NULL`)
     await connection.execute('INSERT INTO schema_versions(version) VALUES(12)')
   }
-  console.log('Esquema inicialitzat correctament (versió 12).')
+  const [[lineIdentityMigration]]=await connection.query('SELECT version FROM schema_versions WHERE version=13')
+  if(!lineIdentityMigration){
+    const [identityColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_import_rows' AND COLUMN_NAME='identity_hash'",[env.DB_NAME])
+    if(!identityColumns.length)await connection.query('ALTER TABLE sales_import_rows ADD COLUMN identity_hash CHAR(64) NULL AFTER line_hash, ADD INDEX sales_rows_identity_confirmed(identity_hash,is_confirmed)')
+    const [rows]=await connection.query("SELECT r.id,CAST(i.company_id AS CHAR) companyName,r.client_code clientCode,r.delivery_note_number deliveryNoteNumber,DATE_FORMAT(r.delivery_date,'%Y-%m-%d') date,r.product_code productCode,r.concept,r.quantity FROM sales_import_rows r JOIN sales_imports i ON i.id=r.import_id WHERE r.identity_hash IS NULL")
+    for(const row of rows)await connection.execute('UPDATE sales_import_rows SET identity_hash=? WHERE id=?',[buildLineIdentityHash(row),row.id])
+    await connection.execute('INSERT IGNORE INTO schema_versions(version) VALUES(13)')
+  }
+  const [[priceReconciliationMigration]]=await connection.query('SELECT version FROM schema_versions WHERE version=14')
+  if(!priceReconciliationMigration){
+    const [matches]=await connection.query(`SELECT identity_hash,MIN(id) canonical_id,MAX(CASE WHEN COALESCE(unit_price,0)<>0 THEN id END) priced_id FROM sales_import_rows WHERE is_confirmed=TRUE AND identity_hash IS NOT NULL GROUP BY identity_hash HAVING SUM(COALESCE(unit_price,0)=0)>0 AND SUM(COALESCE(unit_price,0)<>0)>0`)
+    for(const match of matches){
+      const [[priced]]=await connection.query('SELECT unit_price,taxable_base,vat_amount,total_amount FROM sales_import_rows WHERE id=?',[match.priced_id])
+      await connection.execute('UPDATE sales_import_rows SET unit_price=?,taxable_base=?,vat_amount=?,total_amount=? WHERE id=?',[priced.unit_price,priced.taxable_base,priced.vat_amount,priced.total_amount,match.canonical_id])
+      await connection.execute("UPDATE sales_import_rows SET is_confirmed=FALSE,discarded_reason='updated_existing' WHERE identity_hash=? AND is_confirmed=TRUE AND id<>?",[match.identity_hash,match.canonical_id])
+    }
+    await connection.query(`UPDATE sales_imports i LEFT JOIN (SELECT import_id,SUM(is_confirmed=TRUE) confirmed_count,SUM(discarded_reason='duplicate') duplicate_count,SUM(discarded_reason='updated_existing') updated_count FROM sales_import_rows GROUP BY import_id) counts ON counts.import_id=i.id SET i.confirmed_row_count=COALESCE(counts.confirmed_count,0),i.discarded_row_count=COALESCE(counts.duplicate_count,0),i.updated_row_count=COALESCE(counts.updated_count,0) WHERE i.status='completed'`)
+    await connection.execute('INSERT IGNORE INTO schema_versions(version) VALUES(14)')
+  }
+  console.log('Esquema inicialitzat correctament (versió 14).')
 } finally { await connection.end() }

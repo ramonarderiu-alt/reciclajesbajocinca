@@ -19,7 +19,9 @@ const formatCents=value=>`${value<0n?'-':''}${String(value<0n?-value:value).padS
 const near=(a,b,tolerance=2n)=>a!=null&&b!=null&&(a>b?a-b:b-a)<=tolerance
 const valueAt=(items,min,max)=>items.filter(i=>i.x>=min&&i.x<max).map(i=>i.text).join(' ').trim()||null
 const canonicalDecimal=value=>{if(value==null||value==='')return'';let text=String(value).trim(),sign='';if(text.startsWith('-')){sign='-';text=text.slice(1)}const [whole='0',fraction='']=text.split('.'),cleanWhole=whole.replace(/^0+(?=\d)/,'')||'0',cleanFraction=fraction.replace(/0+$/,'');return sign+cleanWhole+(cleanFraction?'.'+cleanFraction:'')}
-export const buildLineHash=row=>crypto.createHash('sha256').update([row.companyName,row.clientCode,row.deliveryNoteNumber,row.date,row.productCode,row.concept].map(v=>String(v||'').trim().replace(/\s+/g,' ').toUpperCase()).concat([row.quantity,row.unitPrice,row.taxableBase,row.vatAmount,row.totalAmount].map(canonicalDecimal)).join('|')).digest('hex')
+const identityParts=row=>[row.companyName,row.clientCode,row.deliveryNoteNumber,row.date,row.productCode,row.concept].map(v=>String(v||'').trim().replace(/\s+/g,' ').toUpperCase()).concat([row.quantity].map(canonicalDecimal))
+export const buildLineIdentityHash=row=>crypto.createHash('sha256').update(identityParts(row).join('|')).digest('hex')
+export const buildLineHash=row=>crypto.createHash('sha256').update(identityParts(row).concat([row.unitPrice,row.taxableBase,row.vatAmount,row.totalAmount].map(canonicalDecimal)).join('|')).digest('hex')
 
 export function itemsToRows(items){const rows=[];for(const item of items.filter(i=>i.text?.trim())){const y=Math.round(item.y);let row=rows.find(r=>Math.abs(r.y-y)<=2);if(!row){row={y,items:[]};rows.push(row)}row.items.push({...item,x:Math.round(item.x)})}return rows.sort((a,b)=>b.y-a.y).map(r=>({...r,items:r.items.sort((a,b)=>a.x-b.x),text:r.items.map(i=>i.text).join(' ').trim()}))}
 

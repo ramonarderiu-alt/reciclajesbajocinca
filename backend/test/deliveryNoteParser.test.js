@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {parseEuropeanDecimal,parseSpanishDate,parseDeliveryNotePages} from '../src/services/deliveryNoteParser.js'
+import {parseEuropeanDecimal,parseSpanishDate,parseDeliveryNotePages,buildLineHash,buildLineIdentityHash} from '../src/services/deliveryNoteParser.js'
 const item=(text,x,y)=>({text,x,y}),header=(code='4300200004',name='BANPOR SL',y=500)=>[item(code,18,y),item(name,69,y)]
 const delivery=({note='232785/RBC',date='14/09/23',product='386070',concept='NUTRICOMPOST',quantity='25,76',price='35,0000',base='901,60',vat='90,16',total='991,76',y=480}={})=>[item(note,18,y),item(date,78,y),item(product,204,y),item(concept,264,y),item(quantity,559,y),item(price,618,y),item(base,681,y),item(vat,735,y),item(total,795,y)]
 const parse=pages=>parseDeliveryNotePages(pages.map((items,index)=>({pageNumber:index+1,items})))
@@ -12,3 +12,5 @@ test('exclou subtotals, totals acumulats i peus',()=>{const result=parse([[...he
 test('conserva diverses línies del mateix albarà',()=>{const result=parse([[...header(),...delivery(),...delivery({product:'386071',concept:'SEGONA LÍNIA',y:460})]]);assert.equal(result.rows.length,2);assert.equal(result.rows[0].deliveryNoteNumber,result.rows[1].deliveryNoteNumber);assert.notEqual(result.rows[0].lineHash,result.rows[1].lineHash)})
 test('marca duplicats i diferències monetàries',()=>{const same=delivery();const result=parse([[...header(),...same,...delivery({y:460}),...delivery({note:'ERR/RBC',base:'900,00',y:440})]]);assert.match(result.rows[1].warnings.join(' '),/duplicat/i);assert.match(result.rows[2].warnings.join(' '),/no coincideix/i)})
 test('valida correctament imports i quantitats negatives',()=>{const result=parse([[...header(),...delivery({quantity:'-14,90',price:'15,0000',base:'-223,50',vat:'-22,35',total:'-245,85'})]]);assert.deepEqual(result.rows[0].warnings,[])})
+
+test('manté la identitat quan una línia incorpora el preu',()=>{const base={companyName:'1',clientCode:'C1',deliveryNoteNumber:'A1',date:'2026-01-01',productCode:'P1',concept:'ARTICLE',quantity:'10.00',unitPrice:'0',taxableBase:'0',vatAmount:'0',totalAmount:'0'},priced={...base,unitPrice:'5',taxableBase:'50',vatAmount:'5',totalAmount:'55'};assert.equal(buildLineIdentityHash(base),buildLineIdentityHash(priced));assert.notEqual(buildLineHash(base),buildLineHash(priced))})
