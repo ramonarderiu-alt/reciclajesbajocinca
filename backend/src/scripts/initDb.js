@@ -1,3 +1,4 @@
+import {ensureCentreRatingsTable} from '../repositories/centreRatingRepository.js'
 import mysql from 'mysql2/promise'
 import bcrypt from 'bcryptjs'
 import { env } from '../config/env.js'
@@ -60,6 +61,7 @@ try {
   const [importColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_imports'",[env.DB_NAME]);const importColumnSet=new Set(importColumns.map(row=>row.COLUMN_NAME));if(!importColumnSet.has('confirmed_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN confirmed_row_count INT NOT NULL DEFAULT 0 AFTER row_count');if(!importColumnSet.has('discarded_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN discarded_row_count INT NOT NULL DEFAULT 0 AFTER confirmed_row_count')
   if(!importColumnSet.has('updated_row_count'))await connection.query('ALTER TABLE sales_imports ADD COLUMN updated_row_count INT NOT NULL DEFAULT 0 AFTER discarded_row_count')
   const [rowColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_import_rows'",[env.DB_NAME]);if(!rowColumns.some(row=>row.COLUMN_NAME==='discarded_reason'))await connection.query('ALTER TABLE sales_import_rows ADD COLUMN discarded_reason VARCHAR(40) NULL AFTER is_confirmed')
+  if(!rowColumns.some(row=>row.COLUMN_NAME==='centre_name'))await connection.query('ALTER TABLE sales_import_rows ADD COLUMN centre_name VARCHAR(500) NULL AFTER client_name')
   const [classificationColumns]=await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME='sales_article_compost_group'",[env.DB_NAME])
   if(!classificationColumns.some(row=>row.COLUMN_NAME==='category')){
     await connection.query("ALTER TABLE sales_article_compost_group ADD COLUMN category ENUM('compost','excrements','fangs','teixits','cendres','altres') NULL AFTER product_name")
@@ -144,5 +146,6 @@ try {
     await connection.query(`UPDATE sales_imports i LEFT JOIN (SELECT import_id,SUM(is_confirmed=TRUE) confirmed_count,SUM(discarded_reason='duplicate') duplicate_count,SUM(discarded_reason='updated_existing') updated_count FROM sales_import_rows GROUP BY import_id) counts ON counts.import_id=i.id SET i.confirmed_row_count=COALESCE(counts.confirmed_count,0),i.discarded_row_count=COALESCE(counts.duplicate_count,0),i.updated_row_count=COALESCE(counts.updated_count,0) WHERE i.status='completed'`)
     await connection.execute('INSERT IGNORE INTO schema_versions(version) VALUES(14)')
   }
+  await ensureCentreRatingsTable(connection)
   console.log('Esquema inicialitzat correctament (versió 14).')
 } finally { await connection.end() }

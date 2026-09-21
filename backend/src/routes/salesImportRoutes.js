@@ -4,6 +4,7 @@ import { requirePermission } from '../middleware/auth.js'
 import { uploadPdf } from '../middleware/pdfUpload.js'
 import * as controller from '../controllers/salesImportController.js'
 const router=Router(),view=requirePermission('sales_clients.view'),manage=requirePermission('sales_clients.manage')
+router.put('/sales/clients/:clientCode/centre-rating',manage,asyncHandler(controller.rateCentre))
 router.get('/sales/clients',view,asyncHandler(controller.sales))
 router.get('/sales/clients/:clientCode',view,asyncHandler(controller.clientSales))
 router.get('/sales/articles',view,asyncHandler(controller.articleSales))
