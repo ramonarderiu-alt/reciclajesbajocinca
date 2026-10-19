@@ -2,7 +2,9 @@ import express from 'express'
 import helmet from 'helmet'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import { corsOrigins } from './config/env.js'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { corsOrigins, env } from './config/env.js'
 import authRoutes from './routes/authRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import salesImportRoutes from './routes/salesImportRoutes.js'
@@ -19,4 +21,14 @@ app.use('/api/auth',authRoutes)
 app.use('/api',authenticate,adminRoutes)
 app.use('/api',authenticate,salesImportRoutes)
 app.use('/api',authenticate,timeClockRoutes)
+if(env.NODE_ENV==='production'){
+  const frontendDist=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../frontend/dist')
+  app.use('/assets',express.static(path.join(frontendDist,'assets'),{immutable:true,maxAge:'1y'}))
+  app.use(express.static(frontendDist,{index:false,maxAge:0}))
+  app.use((req,res,next)=>{
+    if(req.method!=='GET'||req.path.startsWith('/api')||path.extname(req.path))return next()
+    res.set('Cache-Control','no-cache')
+    res.sendFile(path.join(frontendDist,'index.html'),error=>{if(error)next(error)})
+  })
+}
 app.use(notFoundHandler);app.use(errorHandler)

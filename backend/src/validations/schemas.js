@@ -1,3 +1,4 @@
+import {normalizeDescriptionCode} from '../services/articleDescriptionCode.js'
 import { z } from 'zod'
 export const loginSchema=z.object({username:z.string().trim().min(1).max(80),password:z.string().min(1).max(200)})
 export const userSchema=z.object({name:z.string().trim().min(2).max(120),username:z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/),email:z.string().email().max(190),role_id:z.coerce.number().int().positive(),password:z.string().min(1).max(200).optional(),is_active:z.boolean().optional()})
@@ -5,9 +6,15 @@ export const roleSchema=z.object({name:z.string().trim().min(2).max(80),descript
 export const companySchema=z.object({trade_name:z.string().min(2).max(150),legal_name:z.string().max(180).nullish(),tax_id:z.string().max(30).nullish(),address:z.string().max(255).nullish(),phone:z.string().max(40).nullish(),email:z.string().email().max(190).nullish().or(z.literal('')),logo_url:z.string().url().max(500).nullish().or(z.literal('')),primary_color:z.string().regex(/^#[0-9a-fA-F]{6}$/),timezone:z.string().max(64),language:z.string().max(10),date_format:z.string().max(20),modules:z.record(z.string(),z.boolean()).optional()})
 const decimal=z.union([z.string().regex(/^-?\d+(\.\d+)?$/),z.number()]).nullish()
 export const importRowSchema=z.object({client_code:z.string().max(40).nullish(),client_name:z.string().max(190).nullish(),deliveryNoteNumber:z.string().min(1).max(80).optional(),date:z.iso.date().nullish(),externalCode:z.string().max(80).nullish(),productCode:z.string().max(80).nullish(),concept:z.string().max(2000).nullish(),wasteCode:z.string().max(20).nullish(),vehiclePlate:z.string().max(30).nullish(),trailerPlate:z.string().max(30).nullish(),quantity:decimal,unitPrice:decimal,taxableBase:decimal,vatAmount:decimal,totalAmount:decimal}).strict()
-const articleCategory=z.enum(['compost','excrements','fangs','teixits','cendres','altres','no_comptabilitzar'])
+const articleCategory=z.enum(['compost','excrements','fangs','teixits','cendres','altres','no_comptabilitzar','fruita','paper','fusta','mat_inade'])
 export const articleClassificationSchema=z.object({articles:z.array(z.object({product_code:z.string().min(1).max(80),product_name:z.string().min(1).max(255),category:articleCategory.nullable()})).max(10000)})
 export const articleAssignmentSchema=z.object({product_code:z.string().min(1).max(80),product_name:z.string().min(1).max(255),category:articleCategory.nullable()})
 export const timeClockUserSchema=z.object({time_clock_code:z.string().min(1).max(40).regex(/^[A-Za-z0-9._-]+$/).nullable(),multi_time_clock_enabled:z.boolean(),time_clock_day_night_columns_enabled:z.boolean(),time_clock_management_enabled:z.boolean(),parent_user_id:z.coerce.number().int().positive().nullable(),overtime_base_minutes:z.coerce.number().int().min(1).max(1440).default(480),overtime_half_threshold_minutes:z.coerce.number().int().min(0).max(59).default(25),overtime_full_threshold_minutes:z.coerce.number().int().min(0).max(59).default(55)}).refine(v=>v.overtime_half_threshold_minutes<v.overtime_full_threshold_minutes,{message:'El llindar de mitja hora ha de ser inferior al d’una hora'})
 
 export const centreRatingSchema=z.object({centreName:z.string().trim().min(1).max(500),rating:z.number().int().min(1).max(5),comment:z.string().trim().max(2000).optional()}).strict()
+export const centreObservationSchema=z.object({clientCode:z.string().trim().min(1).max(40),centreName:z.string().trim().min(1).max(500),comment:z.string().trim().max(2000).default('')}).strict()
+
+export const descriptionCodeSchema=z.string().trim().min(1).max(100).transform(normalizeDescriptionCode).pipe(z.string().min(1).max(80).regex(/^[^()]+$/))
+export const articleCodeClassificationSchema=z.object({code:descriptionCodeSchema,category:articleCategory.nullable(),articles:z.array(z.object({product_code:z.string().min(1).max(80),product_name:z.string().min(1).max(255)}).strict()).min(1).max(10000)}).strict()
+
+export const selectedArticleClassificationSchema=z.object({category:articleCategory.nullable(),articles:z.array(z.object({product_code:z.string().min(1).max(80),product_name:z.string().min(1).max(255),previous_category:articleCategory.nullable()}).strict()).min(1).max(10000)}).strict()

@@ -16,6 +16,7 @@ const router=createRouter({history:createWebHistory(),routes:[
  {path:'/roles',component:RolesView,meta:{title:'Rols i permisos',permission:'roles.view'}},
  {path:'/company',component:CompanyView,meta:{title:'Configuració general',permission:'company.view'}},
  {path:'/audit',component:AuditView,meta:{title:'Auditoria',permission:'audit.view'}},
+ {path:'/classification-prices',redirect:{path:'/sales-clients',query:{tab:'classification-prices'}}},
  {path:'/sales-clients',component:SalesClientsView,meta:{title:'Vendes clients',permission:'sales_clients.view'}},
  {path:'/sales-clients/:clientCode',name:'client-sales-detail',component:ClientSalesDetailView,meta:{title:'Historial del client',permission:'sales_clients.view'}},
  {path:'/time-clock',component:TimeClockView,meta:{title:'Fitxatge i control horari',permission:'time_clock.view'}},

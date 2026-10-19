@@ -1,4 +1,4 @@
-﻿import test from 'node:test'
+import test from 'node:test'
 import assert from 'node:assert/strict'
 import {buildClientSalesMatrix} from '../src/services/clientSalesMatrix.js'
 import {parseDeliveryNotePages} from '../src/services/deliveryNoteParser.js'
@@ -14,4 +14,11 @@ test('centres entre pàgines, canvi de centre i client i IVA desconegut',()=>{
  const pages=[[...header(),item('4300200004',12,500),item('CLIENT A',70,500),item('CENTRE A - ADREÇA -',18,480),...line('A1')],[...header(),...line('A2',520),item('Recuento: 2',24,500),item('Totales CENTRE A',300,500),item('CENTRE B - ADREÇA -',18,480),...line('A3'),item('- -',20,440),...line('A4',420),item('4300200005',12,400),item('CLIENT B',70,400),...line('A5',380)]];
  const result=parseDeliveryNotePages(pages.map((items,i)=>({pageNumber:i+1,items})));
  assert.equal(result.rows.length,5);assert.deepEqual(result.rows.map(r=>r.centreName),['CENTRE A - ADREÇA','CENTRE A - ADREÇA','CENTRE B - ADREÇA',null,null]);assert.equal(result.rows[4].clientCode,'4300200005');assert.equal(result.rows[0].productCode,'386070');assert.equal(result.rows[0].quantity,'25.76');assert.equal(result.rows[0].unitPrice,'35.00');assert.equal(result.rows[0].totalAmount,'901.60');assert.equal(result.rows[0].vatAmount,null);assert.deepEqual(result.rows[0].warnings,[]);
+});
+
+test('desglossa totals per classificació quan les files porten categoria',()=>{
+ const row=(category,quantity,amount)=>({client_code:'A',client_name:'A',centre_name:'Centre 1',sale_year:2026,category,quantity,total_amount:amount});
+ const result=buildClientSalesMatrix([row('compost','1.5000','15.00'),row('compost','0.5000','5.00'),row(null,'2.0000','20.00')]);
+ assert.deepEqual(result.rows[0].years[2026].categories,[{category:'compost',quantity:'2.0000',totalAmount:'20.00'},{category:null,quantity:'2.0000',totalAmount:'20.00'}]);
+ assert.deepEqual(result.rows[0].centres[0].years[2026].categories,result.rows[0].years[2026].categories);
 });

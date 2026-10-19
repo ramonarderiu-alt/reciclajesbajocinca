@@ -29,12 +29,12 @@ export function parseDeliveryNotePages(pages){
   const result={companyName:null,pageCount:pages.length,clients:new Map(),rows:[],warnings:[],pageTotals:[]};let activeClient=null,lastRow=null,activeCentre=null
   for(const page of pages){const rows=itemsToRows(page.items),centreLayout=page.items.some(item=>item.text==='Producto'&&item.x>250);for(const visual of rows){const text=visual.text
     const company=text.match(/^EMPRESA:\s*(.+)$/i);if(company&&!result.companyName)result.companyName=company[1].trim()
-    if(/RESUMEN DE ALBARANES|^Albarán\b|^-?\s*Página\s+\d+|^e$/i.test(text))continue
+    if(/RESUMEN DE ALBARANES|^Albar.n\b|^-?\s*Página\s+\d+|^e$/i.test(text))continue
     const first=valueAt(visual.items,0,68),name=valueAt(visual.items,68,410)
     if(first&&/^\d{8,12}$/.test(first)&&name&&!/^\d/.test(name)){activeClient={clientCode:first,clientName:name.replace(/\s+/g,' ').trim()};result.clients.set(first,activeClient);activeCentre=null;lastRow=null;continue}
     if(centreLayout&&/^Recuento\b/i.test(text)){lastRow=null;continue}
     if(centreLayout&&/^-\s*-$/.test(text)){activeCentre=null;lastRow=null;continue}
-    if(centreLayout&&activeClient&&visual.items[0]?.x===18&&!/^\S+\s+\d{2}\/\d{2}\/\d{2,4}\b/.test(text)&&!/^(Albarán|RESUMEN|EMPRESA|Total)/i.test(text)){
+    if(centreLayout&&activeClient&&visual.items[0]?.x>=15&&visual.items[0]?.x<=40&&!/^\S+\s+\d{2}\/\d{2}\/\d{2,4}\b/.test(text)&&!/^(Albar.n|RESUMEN|EMPRESA|Total)/i.test(text)){
       activeCentre=text.replace(/\s+-\s*$/,'').trim();lastRow=null;continue
     }
     if(centreLayout&&/^Total (acumulado|general)/i.test(text)){result.pageTotals.push({page:page.pageNumber,rawText:text,totalAmount:parseEuropeanDecimal(valueAt(visual.items,715,850))});lastRow=null;continue}

@@ -7,11 +7,20 @@
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm run build --prefix frontend",
+    "deploy:build": "npm run install:all && npm run build",
+    "start": "npm start --prefix backend",
     "test": "npm test --prefix backend",
     "db:init": "npm run db:init --prefix backend",
-    "db:migrate:centres": "npm run db:migrate:centres --prefix backend"
+    "db:migrate:centres": "npm run db:migrate:centres --prefix backend",
+    "db:migrate:imports": "npm run db:migrate:imports --prefix backend",
+    "db:migrate:fruita": "npm run db:migrate:fruita --prefix backend",
+    "db:migrate:paper": "npm run db:migrate:paper --prefix backend",
+    "db:migrate:fusta-mat-inade": "npm run db:migrate:fusta-mat-inade --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   }
 }

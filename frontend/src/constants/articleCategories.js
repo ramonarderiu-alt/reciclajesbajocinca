@@ -1,0 +1,1 @@
+export const articleCategories=[['compost','Compost'],['excrements','Excrements'],['fangs','Fangs'],['teixits','Teixits'],['cendres','Cendres'],['fruita','Fruita'],['paper','Paper'],['fusta','Fusta'],['mat_inade','Mat Inade'],['altres','Altres'],['no_comptabilitzar','No comptabilitzar']]

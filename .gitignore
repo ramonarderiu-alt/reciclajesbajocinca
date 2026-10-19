@@ -6,3 +6,6 @@ uploads/
 *.log
 query *.csv
 malbvresumxc.pdf
+/backup/
+/copia.sql
+/.vscode/
