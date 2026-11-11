@@ -1,6 +1,8 @@
 # Reciclajes Bajo Cinca
 
-Base empresarial modular amb Vue 3 + Vite, API REST Express i MySQL. Aquesta fase inclou autenticació, usuaris, rols/permisos, configuració corporativa i auditoria, però cap mòdul de negoci.
+El mòdul **Comptabilitat** incorpora comptes, assentaments, factures, cartera, conciliació i informes del projecte `contabilitat`, amb la sessió i els permisos d'aquesta aplicació. Per preparar-lo, executeu `npm run install:all` i `npm run db:migrate:accounting`; després, `npm run dev`. Consulteu [la instal·lació i l'abast del mòdul](modules/accounting/README.md).
+
+Aplicació empresarial modular amb Vue 3 + Vite, API REST Express i MySQL. Inclou autenticació, usuaris, rols i permisos, configuració corporativa, auditoria, vendes de clients, control horari i comptabilitat.
 
 ## Estructura
 
@@ -14,10 +16,11 @@ El model usa `companies`, `users`, `roles`, `permissions`, `role_permissions`, `
 
 ## Instal·lació
 
-Requisits: Node 20.19+ (o 22.12+) i MySQL 8.
+Requisits: Node 22.13+ i MySQL 8 (verificat amb 8.0.46).
 
 1. Copieu `backend/.env.example` a `backend/.env` i ajusteu MySQL, JWT, CORS i l'administrador inicial.
 2. Opcionalment copieu `frontend/.env.example` a `frontend/.env`.
+   L’API i les migracions carreguen `backend/.env` amb una ruta fixa, independentment de la carpeta d’arrencada. `npm run config:check` mostra el fitxer carregat i si la recuperació està configurada, sense mostrar secrets. Per seleccionar un altre fitxer, definiu la variable de procés `RBC_ENV_FILE` amb la seva ruta absoluta abans d’executar l’API o les migracions. Les variables ja definides pel gestor del servei tenen prioritat i es mostren només pel nom a `overriddenKeys`.
 3. Executeu:
 
 ```bash
@@ -26,9 +29,13 @@ npm run db:init
 npm run dev
 ```
 
-Obriu `http://localhost:5174`. L'ordre `npm run dev` manté actius frontend i backend al mateix terminal. L'API queda a `http://localhost:3100/api`; salut: `GET /api/health`. L'administrador usa `ADMIN_EMAIL` i `ADMIN_PASSWORD`. Canvieu les credencials temporals i `JWT_ACCESS_SECRET` abans de producció.
+Obriu `http://localhost:5174`. L'ordre `npm run dev` manté actius frontend i backend al mateix terminal. L'API queda a `http://localhost:3100/api`; salut: `GET /api/health`. L’administrador inicial usa `ADMIN_USERNAME` (per defecte `admin`) i `ADMIN_PASSWORD`; `ADMIN_EMAIL` és l’adreça del compte. Canviar aquestes variables no restableix la contrasenya d’un compte existent. Consulteu [la recuperació de l’administrador de producció](backend/RECUPERAR_ADMIN.md) per actualitzar només el compte indicat amb `npm run admin:reset-password`. Canvieu les credencials temporals i `JWT_ACCESS_SECRET` abans de producció.
+
+La pantalla d’accés inclou **He oblidat la contrasenya**. Totes les recuperacions s’envien al correu central `PASSWORD_RECOVERY_TO` del `backend/.env`, incloses les d’administradors. Consulteu [l’activació i la migració a producció](backend/RECUPERACIO_CONTRASENYES.md).
 
 ## Validació
+
+La [revisió de neteja i arxius prescindibles](LIMPIEZA.md) diferencia els fitxers locals, els de producció i les dades que cal conservar.
 
 ```bash
 npm test
@@ -41,7 +48,7 @@ npm run db:init
 
 ## Desplegament separat
 
-Publiqueu `frontend/dist` com a SPA amb fallback a `index.html`. Executeu el backend rere HTTPS/reverse proxy amb `COOKIE_SECURE=true`, `TRUST_PROXY=true`, `CORS_ORIGINS` exacte i un usuari MySQL de privilegi mínim. Configureu `VITE_API_URL` amb l'URL pública de l'API.
+Publiqueu `frontend/dist` com a SPA amb fallback a `index.html`. Executeu el backend rere HTTPS/reverse proxy amb `COOKIE_SECURE=true`, `TRUST_PROXY=true`, `CORS_ORIGINS` exacte i un usuari MySQL de privilegi mínim. El frontend utilitza `VITE_API_URL=/api`: les peticions van al mateix domini que serveix el web, i el proxy ha de dirigir `/api` al backend. En desenvolupament, Vite ja configura aquest proxy. Si l'API es publica en un domini diferent, configureu-ne l'URL pública a `frontend/.env.production` abans de compilar. Les variables `VITE_*` queden incorporades als fitxers de `frontend/dist`; després de canviar-les cal recompilar i tornar a publicar aquest directori.
 
 Per afegir un mòdul: declareu permisos `view/manage`, migració idempotent, repositori, servei, validació, ruta protegida, auditoria, entrada de navegació i vistes. Les pujades futures han de respectar `MAX_UPLOAD_MB` i validar MIME/signatura abans de persistir-se.
 
@@ -63,11 +70,13 @@ Aquesta migració afegeix `sales_import_rows.centre_name` i `identity_hash` si f
 
 Reinicieu el backend amb la nova versió quan la migració acabi correctament. La previsualització i les vendes per client necessiten aquests objectes. Si l’error continua, consulteu el codi i el missatge del registre del backend per distingir errors d’esquema, límits de pujada i errors del proxy.
 
-## Importació amb sobreescriptura d’albarans
+## Reimportació i comparació d’albarans
 
-Abans d’arrencar el backend actualitzat sobre una base existent, executeu `npm run db:migrate:imports`. La migració és idempotent i no modifica les vendes. Les instal·lacions noves ja incorporen aquesta migració a `db:init`.
+Abans d’arrencar el backend actualitzat sobre una base existent, executeu `npm run db:migrate:imports`. La migració és idempotent i no modifica les vendes. Permet revisions repetides del mateix PDF i conserva les línies idèntiques que apareguin legítimament més d’una vegada dins d’un albarà. Les instal·lacions noves ja incorporen aquesta migració a `db:init`.
 
-A **Vendes clients → Importacions**, seleccioneu un PDF i escolliu la previsualització habitual o **Sobreescriure albarans del PDF**. La sobreescriptura crea una revisió nova, fins i tot si el PDF ja s’havia importat. Només en confirmar substitueix totes les línies confirmades del mateix client, número d’albarà i any, dins de la mateixa empresa. Cal un PDF amb els albarans complets: les línies antigues absents del PDF deixen de comptabilitzar-se. Els altres albarans es conserven. Les línies substituïdes es mantenen a l’historial i l’operació queda auditada.
+A **Vendes clients → Importacions**, seleccioneu el PDF i premeu **Previsualitzar importació**. El resum diferencia albarans nous, iguals i modificats. La coincidència es determina per empresa, client (amb les agrupacions configurades), número d’albarà i any. Es comparen totes les línies, els camps del client i del centre, les dates, els articles, les matrícules, les quantitats i els imports. L’ordre de les línies i els zeros decimals de representació no generen canvis; el nombre de vegades que apareix cada línia sí que es conserva.
+
+En confirmar, els albarans iguals s’ometen sense modificar les vendes existents. Si hi ha qualsevol diferència, se substitueix l’albarà sencer per totes les línies del PDF, incloses les correccions de preus que ja eren diferents de zero i l’eliminació de línies antigues absents del nou albarà. Els nous s’afegeixen i els albarans que no surten al PDF es conserven. Cal aportar albarans complets. La comparació es torna a comprovar dins de la transacció, serialitzada per empresa; les versions substituïdes es mantenen a l’historial i l’operació queda auditada. Les peticions antigues amb mode `overwrite` segueixen admeses i apliquen aquesta mateixa comparació.
 
 Per incorporar la categoria **Fruita** en una base existent, executeu `npm run db:migrate:fruita` i reinicieu el backend. Les tones i imports de Fruita se sumen a **Resta d’articles**. Les instal·lacions noves ja la inclouen amb `db:init`.
 

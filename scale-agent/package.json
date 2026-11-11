@@ -1,0 +1,1 @@
+{"name":"rbc-scale-agent","private":true,"type":"module","scripts":{"start":"node src/index.js","ports":"node src/index.js --ports","test":"node --test"},"dependencies":{"serialport":"^13.0.0","ws":"^8.18.3","zod":"^4.0.15"}}

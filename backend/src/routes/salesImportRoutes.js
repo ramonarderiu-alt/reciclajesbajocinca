@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import { asyncHandler } from '../lib/asyncHandler.js'
-import { requirePermission } from '../middleware/auth.js'
+import { requirePermission,requireAnyPermission } from '../middleware/auth.js'
 import { uploadPdf } from '../middleware/pdfUpload.js'
 import * as controller from '../controllers/salesImportController.js'
 const router=Router(),view=requirePermission('sales_clients.view'),manage=requirePermission('sales_clients.manage')
-router.put('/sales/clients/:clientCode/centre-rating',manage,asyncHandler(controller.rateCentre))
+router.put('/sales/clients/:clientCode/centre-rating',requireAnyPermission('sales_clients.manage','sales_ratings.manage'),asyncHandler(controller.rateCentre))
 router.get('/sales/centres',view,asyncHandler(controller.centres))
 router.put('/sales/centres/observation',manage,asyncHandler(controller.observeCentre))
 router.get('/sales/clients',view,asyncHandler(controller.sales))

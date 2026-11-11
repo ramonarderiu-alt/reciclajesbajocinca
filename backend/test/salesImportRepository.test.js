@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {pool} from '../src/config/db.js'
-import {confirmedIdentityPrices,confirmImport} from '../src/repositories/salesImportRepository.js'
+import {confirmedIdentityPrices,importDetail} from '../src/repositories/salesImportRepository.js'
 
 test('consulta identitats per lots, elimina repeticions i normalitza els preus',async()=>{
  const execute=pool.execute,calls=[];
@@ -15,27 +15,27 @@ test('consulta identitats per lots, elimina repeticions i normalitza els preus',
  }finally{pool.execute=execute}
 });
 
-test('la sobrescriptura substitueix albarans de clients agrupats',async()=>{
- const getConnection=pool.getConnection,calls=[];
- const connection={
-  async beginTransaction(){},async commit(){},async rollback(){},release(){},
-  async execute(sql,params=[]){
-   calls.push({sql,params});
-   if(sql.startsWith('SELECT id FROM companies'))return [[{id:1}]];
-   if(sql.startsWith('SELECT * FROM sales_imports'))return [[{id:10,import_mode:'overwrite'}]];
-   if(sql.startsWith('SELECT COUNT(*) rowCount'))return [[{rowCount:1,invalidCount:0}]];
-   if(sql.includes('incoming.client_code=existing.client_code'))return [{affectedRows:0}];
-   if(sql.includes('incoming.client_code IN'))return [{affectedRows:1}];
-   if(sql.startsWith('UPDATE sales_import_rows SET is_confirmed'))return [{affectedRows:1}];
-   if(sql.startsWith("UPDATE sales_imports SET status='completed'"))return [{affectedRows:1}];
-   throw new Error('SQL no esperat: '+sql);
-  }
+test('pending legacy previews use current whole-note actions and preserve validation warnings',async()=>{
+ const execute=pool.execute;
+ const oldWarning='Línia ja importada: s’incorporarà el centre si encara no en té';
+ const validation='Quantitat × preu no coincideix amb la base imposable';
+ const incoming={id:2,client_code:'4300200031',delivery_note_number:'2026003394/RB',delivery_date:'2026-09-07',quantity:'2.66',unit_price:'44',taxable_base:'117',total_amount:'117',warnings:JSON.stringify([validation,oldWarning])};
+ let status='pending_review';
+ pool.execute=async sql=>{
+  if(sql.startsWith('SELECT i.*'))return [[{id:10,company_id:1,status,warnings:JSON.stringify([{row:1,message:oldWarning},{row:1,message:validation}])}]];
+  if(sql.startsWith('SELECT * FROM sales_import_clients'))return [[]];
+  if(sql.startsWith('SELECT * FROM sales_import_rows'))return [[incoming]];
+  if(sql.startsWith('SELECT existing.*'))return [[{...incoming,id:1,unit_price:'22',taxable_base:'58.52',total_amount:'58.52'}]];
+  throw new Error('Unexpected query');
  };
- pool.getConnection=async()=>connection;
  try{
-  assert.deepEqual(await confirmImport(10,1),{mode:'overwrite',confirmedCount:1,replacedCount:1,discardedCount:0,updatedCount:0});
-  const grouped=calls.find(call=>call.sql.includes('incoming.client_code IN'));
-  assert.ok(grouped);
-  assert.deepEqual(grouped.params,[1,10,'4300700689','4300200131','4300700689','4300200131',10]);
- }finally{pool.getConnection=getConnection}
+  const detail=await importDetail(10);
+  assert.equal(detail.rows[0].comparison_action,'replace');
+  assert.deepEqual(detail.rows[0].warnings,[validation]);
+  assert.deepEqual(detail.warnings,[{row:1,message:validation}]);
+  assert.equal(detail.comparison.replacedNotes,1);
+  status='completed';
+  const historical=await importDetail(10);
+  assert.deepEqual(JSON.parse(historical.rows[0].warnings),[validation,oldWarning]);
+ }finally{pool.execute=execute}
 });

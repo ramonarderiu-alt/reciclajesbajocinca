@@ -1,0 +1,14 @@
+<service>
+  <id>RBCScaleAgent</id>
+  <name>RBC Bàscula</name>
+  <description>Agent sortint de bàscula industrial</description>
+  <executable>C:\Program Files\nodejs\node.exe</executable>
+  <arguments>"%BASE%\src\index.js"</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <env name="SCALE_CONFIG" value="%BASE%\config.json" />
+  <startmode>Automatic</startmode>
+  <onfailure action="restart" delay="10 sec" />
+  <stoptimeout>15 sec</stoptimeout>
+  <logpath>%BASE%\logs</logpath>
+  <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>5</keepFiles></log>
+</service>

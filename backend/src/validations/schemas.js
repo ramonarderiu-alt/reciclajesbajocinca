@@ -1,7 +1,7 @@
 import {normalizeDescriptionCode} from '../services/articleDescriptionCode.js'
 import { z } from 'zod'
 export const loginSchema=z.object({username:z.string().trim().min(1).max(80),password:z.string().min(1).max(200)})
-export const userSchema=z.object({name:z.string().trim().min(2).max(120),username:z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/),email:z.string().email().max(190),role_id:z.coerce.number().int().positive(),password:z.string().min(1).max(200).optional(),is_active:z.boolean().optional()})
+export const userSchema=z.object({name:z.string().trim().min(2).max(120),username:z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/),email:z.string().email().max(190),role_id:z.coerce.number().int().positive(),password:z.preprocess(value=>value===''?undefined:value,z.string().min(1).max(200).optional()),is_active:z.boolean().optional()})
 export const roleSchema=z.object({name:z.string().trim().min(2).max(80),description:z.string().max(255).nullish(),permission_ids:z.array(z.coerce.number().int().positive()).default([])})
 export const companySchema=z.object({trade_name:z.string().min(2).max(150),legal_name:z.string().max(180).nullish(),tax_id:z.string().max(30).nullish(),address:z.string().max(255).nullish(),phone:z.string().max(40).nullish(),email:z.string().email().max(190).nullish().or(z.literal('')),logo_url:z.string().url().max(500).nullish().or(z.literal('')),primary_color:z.string().regex(/^#[0-9a-fA-F]{6}$/),timezone:z.string().max(64),language:z.string().max(10),date_format:z.string().max(20),modules:z.record(z.string(),z.boolean()).optional()})
 const decimal=z.union([z.string().regex(/^-?\d+(\.\d+)?$/),z.number()]).nullish()

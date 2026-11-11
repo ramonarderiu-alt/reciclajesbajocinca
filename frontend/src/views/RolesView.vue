@@ -1,7 +1,7 @@
 <script setup>
 import{ref,onMounted}from'vue';import{api}from'../services/api.js';import{can}from'../stores/auth.js';import BaseModal from'../components/BaseModal.vue';import UiState from'../components/UiState.vue'
 const roles=ref([]),permissions=ref([]),loading=ref(true),error=ref(''),open=ref(false),editing=ref(null),form=ref({name:'',description:'',permission_ids:[]})
-const permissionLabels={time_clock:'Fitxatge',time_clock_payroll:'Fitxatge - Hores a pagar',time_clock_settings:'Fitxatge - Configuracio'}
+const permissionLabels={time_clock:'Fitxatge',time_clock_payroll:'Fitxatge - Hores a pagar',time_clock_settings:'Fitxatge - Configuracio',sales_clients:'Vendes clients',sales_ratings:'Valoracions de centres',accounting:'Comptabilitat'}
 const moduleLabel=p=>permissionLabels[p.module_key]||p.module_key
 const actionLabel=p=>p.permission_key==='time_clock.payroll'?'Consultar':p.permission_key==='time_clock.settings'?'Gestionar':p.action_key==='view'?'Consultar':'Gestionar'
 async function load(){loading.value=true;try{[roles.value,permissions.value]=await Promise.all([api.get('/roles'),api.get('/permissions')])}catch(e){error.value=e.message}finally{loading.value=false}}

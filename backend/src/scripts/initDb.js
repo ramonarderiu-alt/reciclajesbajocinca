@@ -1,6 +1,8 @@
 import {ensureFruitCategory,ensurePaperCategory,ensureWoodAndInadequateCategories} from '../repositories/articleCategoryMigration.js'
 import {ensureSalesImportModes} from '../repositories/salesImportModeMigration.js'
 import {ensureCentreRatingsTable} from '../repositories/centreRatingRepository.js'
+import {ensurePasswordRecovery} from '../repositories/passwordRecoveryMigration.js'
+import {ensureAccountingPermissions} from '../services/accountingIntegration.js'
 import mysql from 'mysql2/promise'
 import bcrypt from 'bcryptjs'
 import { env } from '../config/env.js'
@@ -88,6 +90,7 @@ try {
   for (const [name,description,system] of [['Administrador','Accés complet',1],['Supervisor','Supervisió i consulta',1],['Usuari','Accés bàsic',1]]) await connection.execute('INSERT INTO roles(name,description,is_system) VALUES(?,?,?) ON DUPLICATE KEY UPDATE description=VALUES(description)',[name,description,system])
   const permissions=[['dashboard.view','dashboard','view'],['users.view','users','view'],['users.manage','users','manage'],['roles.view','roles','view'],['roles.manage','roles','manage'],['company.view','company','view'],['company.manage','company','manage'],['audit.view','audit','view'],['sales_clients.view','sales_clients','view'],['sales_clients.manage','sales_clients','manage'],['time_clock.view','time_clock','view'],['time_clock.manage','time_clock','manage'],['time_clock.payroll','time_clock_payroll','view'],['time_clock.settings','time_clock_settings','manage']]
   for(const [key,module,action] of permissions) await connection.execute('INSERT INTO permissions(permission_key,module_key,action_key) VALUES(?,?,?) ON DUPLICATE KEY UPDATE module_key=VALUES(module_key),action_key=VALUES(action_key)',[key,module,action])
+  await connection.execute("INSERT INTO permissions(permission_key,module_key,action_key,description) VALUES('sales_ratings.manage','sales_ratings','manage','Posar puntuacions i comentaris als centres') ON DUPLICATE KEY UPDATE description=VALUES(description)")
   await connection.query(`INSERT IGNORE INTO role_permissions(role_id,permission_id) SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.name='Administrador' AND p.permission_key NOT IN ('time_clock.payroll','time_clock.settings')`)
   await connection.query(`INSERT IGNORE INTO role_permissions(role_id,permission_id) SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key IN ('dashboard.view','users.view','users.manage','roles.view','company.view') WHERE r.name='Supervisor'`)
   await connection.query(`INSERT IGNORE INTO role_permissions(role_id,permission_id) SELECT r.id,p.id FROM roles r JOIN permissions p ON p.permission_key='dashboard.view' WHERE r.name='Usuari'`)
@@ -154,5 +157,7 @@ try {
     await connection.execute('INSERT IGNORE INTO schema_versions(version) VALUES(14)')
   }
   await ensureCentreRatingsTable(connection)
+  await ensurePasswordRecovery(connection)
+  await ensureAccountingPermissions(connection)
   console.log('Esquema inicialitzat correctament (versió 14).')
 } finally { await connection.end() }

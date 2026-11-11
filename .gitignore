@@ -8,4 +8,15 @@ query *.csv
 malbvresumxc.pdf
 /backup/
 /copia.sql
+/frontend/public/accounting-app/
 /.vscode/
+/artifacts/
+# Residuos de pruebas y perfiles temporales del navegador.
+.verification/
+.runtime/
+# Copias persistentes del módulo: se conservan en disco y no se versionan.
+.local-backups/
+
+/scale-agent/config.json
+/scale-agent/agent-token.txt
+/scale-agent/*.tmp

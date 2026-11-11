@@ -1,0 +1,16 @@
+{
+  "name": "contabilidad",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "build": "npm run build -w frontend",
+    "test": "npm run test -w backend"
+  }
+}

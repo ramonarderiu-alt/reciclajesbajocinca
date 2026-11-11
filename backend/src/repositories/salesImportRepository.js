@@ -4,21 +4,60 @@ import { attachCentreCommentsToRows,attachCentreRatings } from './centreRatingRe
 import { salesClientGroup,salesClientGroups,groupClientSalesRows } from '../services/salesClientGroups.js'
 import { buildClientSalesMatrix } from '../services/clientSalesMatrix.js'
 import { pool,transaction } from '../config/db.js'
+import {compareDeliveryNotes} from '../services/deliveryNoteComparison.js'
+import {buildLineHash,buildLineIdentityHash} from '../services/deliveryNoteParser.js'
+
+const obsoleteImportWarnings=new Set([
+ 'Línia ja importada: s’incorporarà el centre si encara no en té',
+ 'Línia ja importada anteriorment',
+ 'La línia existent té preu zero i s’actualitzarà amb aquests imports'
+])
+// Pending previews made before whole-note replacement can contain old decisions.
+// Keep validation warnings, but derive the import action from current sales.
+const currentImportWarnings=value=>(Array.isArray(value)?value:JSON.parse(value||'[]')).filter(warning=>!obsoleteImportWarnings.has(warning?.message||warning))
 
 export async function findImportByHash(companyId,hash){const [rows]=await pool.execute('SELECT id,status,created_at FROM sales_imports WHERE company_id=? AND file_hash=? ORDER BY id DESC LIMIT 1',[companyId,hash]);return rows[0]}
 export async function confirmedHashes(hashes){if(!hashes.length)return new Set();const placeholders=hashes.map(()=>'?').join(',');const [rows]=await pool.execute(`SELECT DISTINCT line_hash FROM sales_import_rows WHERE is_confirmed=TRUE AND line_hash IN (${placeholders})`,hashes);return new Set(rows.map(r=>r.line_hash))}
-export async function createPreview({companyId,userId,filename,fileHash,parsed,mode='append'}){return transaction(async c=>{const warnings=[...parsed.warnings.map(message=>({message})),...parsed.rows.flatMap((row,index)=>row.warnings.map(message=>({row:index+1,message})))];const [created]=await c.execute(`INSERT INTO sales_imports(company_id,imported_by,original_filename,file_hash,import_mode,import_attempt,detected_company,page_count,client_count,row_count,taxable_base_total,vat_total,total_amount,status,warnings,errors) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,JSON_ARRAY())`,[companyId,userId,filename,fileHash,mode,mode==='overwrite'?crypto.randomUUID():'',parsed.companyName,parsed.pageCount,parsed.clients.length,parsed.rows.length,parsed.totals.taxableBase,parsed.totals.vatAmount,parsed.totals.totalAmount,JSON.stringify(warnings)]);const importId=created.insertId,clientIds=new Map();for(const client of parsed.clients){const [r]=await c.execute('INSERT INTO sales_import_clients(import_id,client_code,client_name,detected_subtotal) VALUES(?,?,?,?)',[importId,client.clientCode,client.clientName,JSON.stringify(client.detectedSubtotal||{})]);clientIds.set(client.clientCode,r.insertId)}for(const row of parsed.rows){const [r]=await c.execute(`INSERT INTO sales_import_rows(import_id,import_client_id,client_code,client_name,delivery_note_number,delivery_date,external_code,product_code,concept,waste_code,vehicle_plate,vehicle_plate_normalized,trailer_plate,trailer_plate_normalized,quantity,unit_price,taxable_base,vat_amount,total_amount,source_page,raw_text,confidence,warnings,line_hash,identity_hash,centre_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[importId,clientIds.get(row.clientCode)||null,row.clientCode,row.clientName,row.deliveryNoteNumber,row.date,row.externalCode,row.productCode,row.concept,row.wasteCode,row.vehiclePlate,row.vehiclePlateNormalized,row.trailerPlate,row.trailerPlateNormalized,row.quantity,row.unitPrice,row.taxableBase,row.vatAmount,row.totalAmount,row.sourcePage,row.rawText,row.confidence,JSON.stringify(row.warnings),row.lineHash,row.identityHash,row.centreName||null]);for(const message of row.warnings)await c.execute(`INSERT INTO sales_import_issues(import_id,row_id,severity,issue_code,message) VALUES(?,?,'warning','VALIDATION',?)`,[importId,r.insertId,message])}return importId})}
-export async function importDetail(id){const [imports]=await pool.execute(`SELECT i.*,u.name imported_by_name FROM sales_imports i JOIN users u ON u.id=i.imported_by WHERE i.id=?`,[id]);if(!imports[0])return null;const [clients]=await pool.execute('SELECT * FROM sales_import_clients WHERE import_id=? ORDER BY client_name',[id]);const [rows]=await pool.execute('SELECT * FROM sales_import_rows WHERE import_id=? ORDER BY source_page,id',[id]);return {...imports[0],clients,rows}}
+export async function createPreview({companyId,userId,filename,fileHash,parsed,mode='append'}){return transaction(async c=>{const warnings=[...parsed.warnings.map(message=>({message})),...parsed.rows.flatMap((row,index)=>row.warnings.map(message=>({row:index+1,message})))];const [created]=await c.execute(`INSERT INTO sales_imports(company_id,imported_by,original_filename,file_hash,import_mode,import_attempt,detected_company,page_count,client_count,row_count,taxable_base_total,vat_total,total_amount,status,warnings,errors) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'pending_review',?,JSON_ARRAY())`,[companyId,userId,filename,fileHash,mode,crypto.randomUUID(),parsed.companyName,parsed.pageCount,parsed.clients.length,parsed.rows.length,parsed.totals.taxableBase,parsed.totals.vatAmount,parsed.totals.totalAmount,JSON.stringify(warnings)]);const importId=created.insertId,clientIds=new Map();for(const client of parsed.clients){const [r]=await c.execute('INSERT INTO sales_import_clients(import_id,client_code,client_name,detected_subtotal) VALUES(?,?,?,?)',[importId,client.clientCode,client.clientName,JSON.stringify(client.detectedSubtotal||{})]);clientIds.set(client.clientCode,r.insertId)}for(const row of parsed.rows){const [r]=await c.execute(`INSERT INTO sales_import_rows(import_id,import_client_id,client_code,client_name,delivery_note_number,delivery_date,external_code,product_code,concept,waste_code,vehicle_plate,vehicle_plate_normalized,trailer_plate,trailer_plate_normalized,quantity,unit_price,taxable_base,vat_amount,total_amount,source_page,raw_text,confidence,warnings,line_hash,identity_hash,centre_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[importId,clientIds.get(row.clientCode)||null,row.clientCode,row.clientName,row.deliveryNoteNumber,row.date,row.externalCode,row.productCode,row.concept,row.wasteCode,row.vehiclePlate,row.vehiclePlateNormalized,row.trailerPlate,row.trailerPlateNormalized,row.quantity,row.unitPrice,row.taxableBase,row.vatAmount,row.totalAmount,row.sourcePage,row.rawText,row.confidence,JSON.stringify(row.warnings),row.lineHash,row.identityHash,row.centreName||null]);for(const message of row.warnings)await c.execute(`INSERT INTO sales_import_issues(import_id,row_id,severity,issue_code,message) VALUES(?,?,'warning','VALIDATION',?)`,[importId,r.insertId,message])}return importId})}
+export async function importDetail(id){
+ const [imports]=await pool.execute('SELECT i.*,u.name imported_by_name FROM sales_imports i JOIN users u ON u.id=i.imported_by WHERE i.id=?',[id]);if(!imports[0])return null;
+ const [clients]=await pool.execute('SELECT * FROM sales_import_clients WHERE import_id=? ORDER BY client_name',[id]);
+ const [rows]=await pool.execute('SELECT * FROM sales_import_rows WHERE import_id=? ORDER BY source_page,id',[id]);
+ const detail={...imports[0],clients,rows};
+ if(detail.status==='pending_review'){
+  detail.warnings=currentImportWarnings(detail.warnings);
+  detail.rows=rows.map(row=>({...row,warnings:currentImportWarnings(row.warnings)}));
+  try{
+   const comparison=await deliveryNoteComparison(pool,id,detail.company_id,detail.rows);
+   detail.comparison=comparison.summary;
+   const actions=new Map(comparison.notes.flatMap(note=>note.incoming.map(row=>[row.id,note.action])));
+   detail.rows=detail.rows.map(row=>({...row,comparison_action:actions.get(row.id)}));
+  }catch(error){if(error instanceof AppError)detail.comparison_error=error.message;else throw error;}
+ }
+ return detail;
+}
 export async function listImports(){const [rows]=await pool.query(`SELECT i.id,i.original_filename,i.import_mode,i.created_at,i.status,i.client_count,i.row_count,i.total_amount,u.name imported_by_name FROM sales_imports i JOIN users u ON u.id=i.imported_by ORDER BY i.created_at DESC,i.id DESC LIMIT 100`);return rows}
-export async function updateImportRow(importId,rowId,fields){const allowed={client_code:'client_code',client_name:'client_name',deliveryNoteNumber:'delivery_note_number',date:'delivery_date',externalCode:'external_code',productCode:'product_code',concept:'concept',wasteCode:'waste_code',vehiclePlate:'vehicle_plate',trailerPlate:'trailer_plate',quantity:'quantity',unitPrice:'unit_price',taxableBase:'taxable_base',vatAmount:'vat_amount',totalAmount:'total_amount'};const entries=Object.entries(fields).filter(([key])=>allowed[key]);if(!entries.length)return;await pool.execute(`UPDATE sales_import_rows SET ${entries.map(([key])=>allowed[key]+'=?').join(',')},confidence='manual' WHERE id=? AND import_id=? AND is_confirmed=FALSE`,[...entries.map(([,value])=>value??null),rowId,importId])}
+export async function updateImportRow(importId,rowId,fields,companyId){
+ const allowed={client_code:'client_code',client_name:'client_name',deliveryNoteNumber:'delivery_note_number',date:'delivery_date',externalCode:'external_code',productCode:'product_code',concept:'concept',wasteCode:'waste_code',vehiclePlate:'vehicle_plate',trailerPlate:'trailer_plate',quantity:'quantity',unitPrice:'unit_price',taxableBase:'taxable_base',vatAmount:'vat_amount',totalAmount:'total_amount'}
+ const entries=Object.entries(fields).filter(([key])=>allowed[key]);if(!entries.length)return
+ return transaction(async c=>{
+  const [[pending]]=await c.execute("SELECT id FROM sales_imports WHERE id=? AND company_id=? AND status='pending_review' FOR UPDATE",[importId,companyId])
+  if(!pending)throw new AppError(409,'IMPORT_LOCKED','Només es poden editar importacions pendents')
+  const [changed]=await c.execute(`UPDATE sales_import_rows SET ${entries.map(([key])=>allowed[key]+'=?').join(',')},confidence='manual' WHERE id=? AND import_id=? AND is_confirmed=FALSE`,[...entries.map(([,value])=>value??null),rowId,importId])
+  if(!changed.affectedRows)throw new AppError(404,'NOT_FOUND','Línia no trobada')
+  const [[row]]=await c.execute('SELECT * FROM sales_import_rows WHERE id=? AND import_id=?',[rowId,importId])
+  const identified={companyName:String(companyId),clientCode:row.client_code,deliveryNoteNumber:row.delivery_note_number,date:row.delivery_date?.toISOString?.().slice(0,10)||String(row.delivery_date||'').slice(0,10),productCode:row.product_code,concept:row.concept,quantity:row.quantity,unitPrice:row.unit_price,taxableBase:row.taxable_base,vatAmount:row.vat_amount,totalAmount:row.total_amount}
+  await c.execute('UPDATE sales_import_rows SET line_hash=?,identity_hash=? WHERE id=? AND import_id=?',[buildLineHash(identified),buildLineIdentityHash(identified),rowId,importId])
+ })
+}
 export async function updateImportRowHashes(importId,rowId,lineHash,identityHash){await pool.execute('UPDATE sales_import_rows SET line_hash=?,identity_hash=? WHERE id=? AND import_id=? AND is_confirmed=FALSE',[lineHash,identityHash,rowId,importId])}
 export async function confirmImport(id,companyId){return transaction(async c=>{
 // Serialize confirmations for a company so two PDFs cannot activate the same notes.
 await c.execute('SELECT id FROM companies WHERE id=? FOR UPDATE',[companyId]);
 const [imports]=await c.execute("SELECT * FROM sales_imports WHERE id=? AND company_id=? AND status='pending_review' FOR UPDATE",[id,companyId]);
 if(!imports[0])return null;
-if(imports[0].import_mode==='overwrite')return overwriteDeliveryNotes(c,id,companyId);
-await c.execute(`UPDATE sales_import_rows existing JOIN (SELECT identity_hash,MIN(centre_name) centre_name FROM sales_import_rows WHERE import_id=? AND centre_name IS NOT NULL GROUP BY identity_hash HAVING COUNT(DISTINCT centre_name)=1) incoming ON incoming.identity_hash=existing.identity_hash SET existing.centre_name=incoming.centre_name WHERE existing.is_confirmed=TRUE AND existing.import_id<>? AND existing.centre_name IS NULL`,[id,id]);await c.execute(`UPDATE sales_import_rows incoming JOIN (SELECT identity_hash,MIN(id) existing_id FROM sales_import_rows WHERE is_confirmed=TRUE AND import_id<>? AND identity_hash IS NOT NULL GROUP BY identity_hash) matched ON matched.identity_hash=incoming.identity_hash JOIN sales_import_rows existing ON existing.id=matched.existing_id SET incoming.is_confirmed=FALSE,incoming.discarded_reason=IF(COALESCE(existing.unit_price,0)=0 AND COALESCE(incoming.unit_price,0)<>0,'updated_existing','duplicate') WHERE incoming.import_id=?`,[id,id]);await c.execute(`UPDATE sales_import_rows existing JOIN sales_import_rows incoming ON incoming.import_id=? AND incoming.discarded_reason='updated_existing' AND incoming.identity_hash=existing.identity_hash SET existing.unit_price=incoming.unit_price,existing.taxable_base=incoming.taxable_base,existing.vat_amount=incoming.vat_amount,existing.total_amount=incoming.total_amount WHERE existing.is_confirmed=TRUE AND existing.import_id<>? AND COALESCE(existing.unit_price,0)=0`,[id,id]);await c.execute("UPDATE sales_import_rows SET is_confirmed=TRUE,discarded_reason=NULL WHERE import_id=? AND discarded_reason IS NULL",[id]);const [[counts]]=await c.execute(`SELECT SUM(is_confirmed=TRUE) confirmedCount,SUM(discarded_reason='duplicate') duplicateCount,SUM(discarded_reason='updated_existing') updatedCount FROM sales_import_rows WHERE import_id=?`,[id]);const confirmedCount=Number(counts.confirmedCount||0),duplicateCount=Number(counts.duplicateCount||0),updatedCount=Number(counts.updatedCount||0);await c.execute("UPDATE sales_imports SET status='completed',confirmed_at=NOW(),confirmed_row_count=?,discarded_row_count=?,updated_row_count=? WHERE id=?",[confirmedCount,duplicateCount,updatedCount,id]);return {confirmedCount,discardedCount:duplicateCount,updatedCount}})}
+return synchronizeDeliveryNotes(c,id,companyId,imports[0].import_mode)
+})}
 export async function cancelImport(id){const [r]=await pool.execute("UPDATE sales_imports SET status='cancelled',cancelled_at=NOW() WHERE id=? AND status='pending_review'",[id]);return r.affectedRows>0}
 export async function salesByClient(companyId,from,to,article=''){
   await syncArticleCatalog(companyId);
@@ -91,32 +130,43 @@ export async function confirmedIdentityPrices(hashes){
   return prices;
 }
 
-async function overwriteDeliveryNotes(c,id,companyId){
- const [[validation]]=await c.execute("SELECT COUNT(*) rowCount,SUM(client_code IS NULL OR TRIM(client_code)='' OR TRIM(delivery_note_number)='' OR delivery_date IS NULL) invalidCount FROM sales_import_rows WHERE import_id=?",[id]);
- if(!Number(validation.rowCount)||Number(validation.invalidCount))throw new AppError(422,'INCOMPLETE_DELIVERY_NOTE','Per sobreescriure cal que totes les línies tinguin client, número d’albarà i data.');
- const [replaced]=await c.execute(`UPDATE sales_import_rows existing
- JOIN sales_imports previous ON previous.id=existing.import_id AND previous.company_id=?
- JOIN sales_import_rows incoming ON incoming.import_id=?
-  AND incoming.client_code=existing.client_code
-  AND incoming.delivery_note_number=existing.delivery_note_number
-  AND YEAR(incoming.delivery_date)=YEAR(existing.delivery_date)
- SET existing.is_confirmed=FALSE,existing.discarded_reason='replaced'
- WHERE existing.is_confirmed=TRUE AND existing.import_id<>?`,[companyId,id,id]);
- let replacedCount=Number(replaced.affectedRows||0);
+export async function deliveryNoteComparison(db,id,companyId,incoming){
+ if(!incoming)[incoming]=await db.execute('SELECT * FROM sales_import_rows WHERE import_id=? ORDER BY id',[id])
+ // Validate the full upload before selecting or changing existing sales.
+ compareDeliveryNotes(incoming,[],companyId)
+ const clients=['existing.client_code=incoming.client_code'],params=[companyId,id,id]
  for(const group of salesClientGroups(companyId)){
-  const placeholders=group.codes.map(()=>'?').join(',');
-  const [groupReplaced]=await c.execute(`UPDATE sales_import_rows existing
- JOIN sales_imports previous ON previous.id=existing.import_id AND previous.company_id=?
- JOIN sales_import_rows incoming ON incoming.import_id=?
-  AND incoming.client_code IN (${placeholders})
-  AND existing.client_code IN (${placeholders})
+  const marks=group.codes.map(()=>'?').join(',')
+  clients.push(`(existing.client_code IN (${marks}) AND incoming.client_code IN (${marks}))`)
+  params.push(...group.codes,...group.codes)
+ }
+ const [existing]=await db.execute(`SELECT existing.* FROM sales_import_rows existing
+ JOIN sales_imports previous ON previous.id=existing.import_id
+ WHERE previous.company_id=? AND existing.is_confirmed=TRUE AND existing.import_id<>?
+ AND EXISTS(SELECT 1 FROM sales_import_rows incoming WHERE incoming.import_id=?
   AND incoming.delivery_note_number=existing.delivery_note_number
   AND YEAR(incoming.delivery_date)=YEAR(existing.delivery_date)
- SET existing.is_confirmed=FALSE,existing.discarded_reason='replaced'
- WHERE existing.is_confirmed=TRUE AND existing.import_id<>?`,[companyId,id,...group.codes,...group.codes,id]);
-  replacedCount+=Number(groupReplaced.affectedRows||0);
+  AND (${clients.join(' OR ')})) ORDER BY existing.id`,params)
+ return compareDeliveryNotes(incoming,existing,companyId)
+}
+
+async function synchronizeDeliveryNotes(c,id,companyId,mode){
+ const comparison=await deliveryNoteComparison(c,id,companyId)
+ if(!comparison.notes.length)throw new AppError(422,'INCOMPLETE_DELIVERY_NOTE','La importació no conté línies d’albarà.')
+ const unchanged=comparison.notes.filter(note=>note.action==='unchanged').flatMap(note=>note.incoming.map(row=>row.id))
+ const replaced=comparison.notes.filter(note=>note.action==='replace').flatMap(note=>note.existing.map(row=>row.id))
+ let replacedCount=0
+ for(let offset=0;offset<replaced.length;offset+=500){
+  const batch=replaced.slice(offset,offset+500)
+  const [result]=await c.execute(`UPDATE sales_import_rows SET is_confirmed=FALSE,discarded_reason='replaced' WHERE is_confirmed=TRUE AND id IN (${batch.map(()=>'?').join(',')})`,batch)
+  replacedCount+=result.affectedRows
  }
- const [confirmed]=await c.execute('UPDATE sales_import_rows SET is_confirmed=TRUE,discarded_reason=NULL WHERE import_id=?',[id]);
- await c.execute("UPDATE sales_imports SET status='completed',confirmed_at=NOW(),confirmed_row_count=?,discarded_row_count=0,updated_row_count=0,replaced_row_count=? WHERE id=?",[confirmed.affectedRows,replacedCount,id]);
- return {mode:'overwrite',confirmedCount:confirmed.affectedRows,replacedCount,discardedCount:0,updatedCount:0};
+ await c.execute('UPDATE sales_import_rows SET is_confirmed=TRUE,discarded_reason=NULL WHERE import_id=?',[id])
+ for(let offset=0;offset<unchanged.length;offset+=500){
+  const batch=unchanged.slice(offset,offset+500)
+  await c.execute(`UPDATE sales_import_rows SET is_confirmed=FALSE,discarded_reason='duplicate' WHERE import_id=? AND id IN (${batch.map(()=>'?').join(',')})`,[id,...batch])
+ }
+ const {summary}=comparison,confirmedCount=summary.newRows+summary.replacementRows,discardedCount=summary.unchangedRows
+ await c.execute("UPDATE sales_imports SET status='completed',confirmed_at=NOW(),confirmed_row_count=?,discarded_row_count=?,updated_row_count=0,replaced_row_count=? WHERE id=?",[confirmedCount,discardedCount,replacedCount,id])
+ return {mode,confirmedCount,replacedCount,discardedCount,updatedCount:0,...summary}
 }
