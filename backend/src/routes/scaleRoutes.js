@@ -1,3 +1,4 @@
+import ticketRoutes from './scaleTicketRoutes.js'
 import {Router} from 'express'
 import {authenticate,requirePermission} from '../middleware/auth.js'
 import {scales,serialOptions} from '../services/scaleService.js'
@@ -6,6 +7,7 @@ import {z} from 'zod'
 import {createHash} from 'node:crypto'
 const router=Router()
 router.use(authenticate,requirePermission('scale.view'))
+router.use('/tickets',ticketRoutes)
 router.get('/',(req,res)=>res.json(scales.list(req.user.company_id,req.user.permissions.includes('scale.configure'))))
 router.post('/:id/capture',(req,res)=>{const s=scales.snapshot(req.params.id,req.user.company_id);if(!s?.reading)return res.status(409).json({error:{message:'No hi ha pes vigent'}});res.json({...s,capturedAt:new Date().toISOString()})})
 router.post('/:id/command',requirePermission('scale.configure'),async(req,res,next)=>{try{

@@ -1,3 +1,4 @@
+import {ensureScaleTickets} from '../repositories/scaleTicketRepository.js'
 import {ensureFruitCategory,ensurePaperCategory,ensureWoodAndInadequateCategories} from '../repositories/articleCategoryMigration.js'
 import {ensureSalesImportModes} from '../repositories/salesImportModeMigration.js'
 import {ensureCentreRatingsTable} from '../repositories/centreRatingRepository.js'
@@ -160,4 +161,5 @@ try {
   await ensurePasswordRecovery(connection)
   await ensureAccountingPermissions(connection)
   console.log('Esquema inicialitzat correctament (versió 14).')
+  await ensureScaleTickets(connection)
 } finally { await connection.end() }

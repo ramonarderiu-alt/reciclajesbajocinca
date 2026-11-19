@@ -1,5 +1,6 @@
 <script setup>
 import {ref,computed,onMounted,onBeforeUnmount} from 'vue'
+import ScaleTicketForm from '../components/ScaleTicketForm.vue'
 import {api} from '../services/api.js'
 import {can,auth} from '../stores/auth.js'
 const scales=ref([]),error=ref(''),networkError=ref(''),captures=ref([]),selected=ref(''),encoding=ref('ascii'),command=ref(''),busy=ref(false)
@@ -18,6 +19,7 @@ function format(value){return new Intl.NumberFormat('ca-ES',{maximumFractionDigi
 </script>
 <template>
  <section><h2>BÀSCULA</h2><p v-if="error||networkError" role="alert">{{error||networkError}}</p><p v-if="!scales.length">No hi ha bàscules disponibles. Configura l'agent i els permisos.</p>
+ <ScaleTicketForm :capture="captures[0]" />
  <article v-for="s in visibleScales" :key="s.id" class="scale-card">
   <h3>{{s.id}} <mark v-if="s.simulation">SIMULACIÓ</mark></h3><p role="status">{{labels[s.status]}}</p>
   <div class="weight">{{s.reading?format(s.reading.weight):'--'}} <small>{{s.reading?.unit||'kg'}}</small></div>
